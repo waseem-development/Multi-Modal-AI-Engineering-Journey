@@ -68,6 +68,43 @@
     transition:background .15s ease;
   }
   .toc-toggle:hover{background:rgba(255,255,255,.2);}
+  .menu-btn{
+    display:none;
+    width:42px; height:42px;
+    padding:0;
+    margin-right:12px;
+    flex-shrink:0;
+    background:rgba(255,255,255,.1);
+    border:1px solid rgba(255,255,255,.3);
+    border-radius:12px;
+    cursor:pointer;
+    align-items:center;
+    justify-content:center;
+    transition:background .15s ease;
+  }
+  .menu-btn:hover{background:rgba(255,255,255,.2);}
+  .menu-btn:focus-visible{outline:2px solid var(--teal); outline-offset:2px;}
+  .menu-btn .bars{position:relative; display:block; width:20px; height:14px;}
+  .menu-btn .bars span{
+    position:absolute; left:0; width:100%; height:2px;
+    background:#fff; border-radius:2px;
+    transition:transform .25s ease, opacity .2s ease, top .25s ease;
+  }
+  .menu-btn .bars span:nth-child(1){top:0;}
+  .menu-btn .bars span:nth-child(2){top:6px;}
+  .menu-btn .bars span:nth-child(3){top:12px;}
+  .menu-btn[aria-expanded="true"] .bars span:nth-child(1){top:6px; transform:rotate(45deg);}
+  .menu-btn[aria-expanded="true"] .bars span:nth-child(2){opacity:0;}
+  .menu-btn[aria-expanded="true"] .bars span:nth-child(3){top:6px; transform:rotate(-45deg);}
+  .nav-overlay{
+    display:none;
+    position:fixed; inset:0;
+    background:rgba(0,0,0,.6);
+    backdrop-filter:blur(2px);
+    z-index:55;
+    opacity:0;
+    transition:opacity .25s ease;
+  }
   .layout{
     display:flex;
     max-width:1300px;
@@ -104,6 +141,13 @@
     transition:background .12s ease, color .12s ease, transform .12s ease;
   }
   nav.toc a:hover{background:var(--teal-soft); color:var(--teal); transform:translateX(2px);}
+  nav.toc a.active{
+    background:var(--teal-soft);
+    color:var(--teal);
+    font-weight:600;
+    box-shadow:inset 3px 0 0 var(--teal);
+  }
+  nav.toc a.active:hover{transform:none;}
   main{flex:1; min-width:0; padding:24px 32px 80px;}
   .hero{
     background:linear-gradient(165deg, var(--paper), var(--bg-soft));
@@ -264,7 +308,34 @@
     padding:30px;
   }
   @media (max-width: 980px){
-    nav.toc{display:none;}
+    .menu-btn{display:inline-flex;}
+    .topbar{flex-wrap:nowrap; justify-content:flex-start; padding:12px 16px;}
+    .topbar .brand{min-width:0;}
+    nav.toc{
+      position:fixed;
+      top:0; left:0; bottom:0;
+      width:min(310px, 86vw);
+      max-height:none;
+      height:100%;
+      z-index:60;
+      background:var(--bg-soft);
+      border-right:1px solid var(--border);
+      box-shadow:8px 0 30px rgba(0,0,0,.55);
+      padding:20px 14px 40px 18px;
+      overflow-y:auto;
+      overscroll-behavior:contain;
+      transform:translateX(-105%);
+      visibility:hidden;
+      transition:transform .28s ease, visibility 0s linear .28s;
+    }
+    body.nav-open nav.toc{
+      transform:translateX(0);
+      visibility:visible;
+      transition:transform .28s ease, visibility 0s;
+    }
+    body.nav-open .nav-overlay{display:block; opacity:1;}
+    body.nav-open{overflow:hidden;}
+    nav.toc a{padding:9px 10px;}
     .content-grid, .content-grid.reverse{grid-template-columns:1fr;}
     .slide-figure{position:static;}
     main{padding:18px;}
@@ -275,8 +346,13 @@
 <body>
 
 <div class="topbar">
+  <button class="menu-btn" id="menuBtn" type="button" aria-label="Open table of contents" aria-controls="toc" aria-expanded="false">
+    <span class="bars" aria-hidden="true"><span></span><span></span><span></span></span>
+  </button>
   <div class="brand">GCN<span>Elaborated Variant of GCN Lecture Decks</span></div>
 </div>
+
+<div class="nav-overlay" id="navOverlay"></div>
 
 <div class="layout">
 <nav class="toc" id="toc">
@@ -1448,11 +1524,73 @@
 </div>
 
 <script>
-  // Smooth scroll + active link highlight
+  // Hamburger menu (mobile TOC drawer)
+  const menuBtn = document.getElementById('menuBtn');
+  const navOverlay = document.getElementById('navOverlay');
+  function setMenu(open){
+    document.body.classList.toggle('nav-open', open);
+    menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    menuBtn.setAttribute('aria-label', open ? 'Close table of contents' : 'Open table of contents');
+  }
+  menuBtn.addEventListener('click', ()=> setMenu(!document.body.classList.contains('nav-open')));
+  navOverlay.addEventListener('click', ()=> setMenu(false));
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') setMenu(false); });
+  window.addEventListener('resize', ()=>{ if(window.innerWidth > 980) setMenu(false); });
+
+  // Scroll-spy: highlight the TOC link for the section you're currently in
+  (function(){
+    const links = Array.from(document.querySelectorAll('nav.toc a[href^="#"]'));
+    const items = links.map(a=>({a, el: document.getElementById(a.getAttribute('href').slice(1))})).filter(x=>x.el);
+    const toc = document.getElementById('toc');
+    let current = null, ticking = false, lockUntil = 0;
+
+    function setActive(item){
+      if(!item || current === item) return;
+      if(current){ current.a.classList.remove('active'); current.a.removeAttribute('aria-current'); }
+      current = item;
+      item.a.classList.add('active');
+      item.a.setAttribute('aria-current', 'location');
+      // keep the active link visible inside the scrollable TOC (desktop sidebar or mobile drawer)
+      if(toc.scrollHeight > toc.clientHeight){
+        const tr = toc.getBoundingClientRect(), ar = item.a.getBoundingClientRect();
+        if(ar.top < tr.top + 40 || ar.bottom > tr.bottom - 40){
+          toc.scrollTop += (ar.top - tr.top) - toc.clientHeight/2;
+        }
+      }
+    }
+    function update(){
+      ticking = false;
+      if(Date.now() < lockUntil) return;           // don't flicker while a TOC click is smooth-scrolling
+      const line = 120;                            // px from top of viewport that counts as "you are here"
+      let best = items[0], bestTop = -Infinity;
+      for(const it of items){
+        const top = it.el.getBoundingClientRect().top;
+        if(top <= line && top > bestTop){ best = it; bestTop = top; }
+      }
+      // at the very bottom of the page, the last section is the one you're on
+      if(window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4){
+        best = items[items.length - 1];
+      }
+      setActive(best);
+    }
+    function schedule(){ if(!ticking){ ticking = true; requestAnimationFrame(update); } }
+    window.addEventListener('scroll', schedule, {passive:true});
+    window.addEventListener('resize', schedule);
+    window.addEventListener('load', update);
+    // highlight instantly when a TOC link is clicked, then resume tracking after the scroll settles
+    links.forEach(a=>a.addEventListener('click', ()=>{
+      const it = items.find(x=>x.a === a);
+      if(it){ setActive(it); lockUntil = Date.now() + 900; setTimeout(update, 950); }
+    }));
+    update();
+  })();
+
+  // Smooth scroll + close drawer on link tap
   document.querySelectorAll('nav.toc a').forEach(a=>{
     a.addEventListener('click', function(e){
       e.preventDefault();
       const target = document.querySelector(this.getAttribute('href'));
+      setMenu(false);
       if(target){ target.scrollIntoView({behavior:'smooth', block:'start'}); }
     });
   });
