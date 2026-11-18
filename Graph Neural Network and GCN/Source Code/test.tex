@@ -1,0 +1,24 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\begin{document}
+
+\title{Graph Neural Networks and GCNs}
+\author{Your Name}
+\date{\today}
+\maketitle
+
+\section{Introduction}
+Graph Neural Networks (GNNs) extend deep learning to non-Euclidean graph-structured data. By passing messages along edges, nodes aggregate feature information from their local neighborhoods to learn rich representations.
+
+\section{Graph Convolutional Networks (GCNs)}
+Consider an undirected graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ with $N$ nodes, an adjacency matrix $A \in \mathbb{R}^{N \times N}$, and a degree matrix $D$. To include self-loops, we define $\tilde{A} = A + I_N$ and $\tilde{D}_{ii} = \sum_j \tilde{A}_{ij}$.
+
+The layer-wise propagation rule for a multi-layer GCN is given by:
+\[
+H^{(l+1)} = \sigma\left(\tilde{D}^{-\frac{1}{2}} \tilde{A} \tilde{D}^{-\frac{1}{2}} H^{(l)} W^{(l)}\right)
+\]
+where $H^{(l)} \in \mathbb{R}^{N \times F_l}$ is the matrix of node activations at layer $l$, $W^{(l)}$ is a trainable weight matrix, and $\sigma(\cdot)$ denotes a non-linear activation function such as ReLU.
+
+\end{document}
